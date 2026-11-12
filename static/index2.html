@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentiment Analysis Tool</title>
+        <!-- Font Awesome CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        body {
+            background-color: #f0f2f5;
+            color: #333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+            padding: 2rem;
+        }
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        .card-header {
+            background-color: #fff;
+            border-bottom: none;
+            padding: 1rem;
+        }
+        .card-body {
+            padding: 1rem;
+        }
+        .card-footer {
+            background-color: #fff;
+            border-top: none;
+            padding: 1rem;
+        }
+        .btn-outline-primary {
+            border-color: #007bff;
+            color: #007bff;
+        }
+        .btn-outline-primary:hover {
+            background-color: #007bff;
+            color: #fff;
+        }
+        #recordingStatus {
+            display: none;
+            color: #dc3545;
+            font-weight: 500;
+        }
+        #fullHistoryModal .modal-body {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Sentiment Analysis Tool</h1>
+
+        <div class="row row-cols-1 row-cols-md-3 g-4">
+            <!-- Text Analysis Card -->
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <i class="fas fa-font fa-2x"></i>
+                        <span class="badge bg-primary">Text</span>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title">Text Analysis</h5>
+                        <textarea id="text-input" class="form-control mb-3" rows="4" placeholder="Enter text to analyze"></textarea>
+                    </div>
+                    <div class="card-footer">
+                        <button onclick="analyzeText()" class="btn btn-outline-primary me-2">Analyze</button>
+                        <button onclick="playText()" class="btn btn-outline-secondary">Play Text</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Speech Analysis Card -->
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                         <i class="fas fa-microphone fa-2x"></i>
+                        <span class="badge bg-success">Speech</span>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title">Speech Analysis</h5>
+                        <button onclick="startRecording()" id="startRecording" class="btn btn-outline-primary me-2">Start Recording</button>
+                        <button onclick="stopRecording()" id="stopRecording" class="btn btn-outline-danger me-2" disabled>Stop</button>
+                        <span id="recordingStatus">Recording...</span>
+                    </div>
+                    <div class="card-footer">
+                        <button onclick="playRecording()" id="playRecording" class="btn btn-outline-secondary" disabled>Play Recording</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Card -->
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <i class="fas fa-chart-bar fa-2x"></i>
+                        <span class="badge bg-info">Results</span>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title">Analysis Results</h5>
+                        <div id="analysis-result"></div>
+                    </div>
+                    <div class="card-footer">
+                        <button onclick="loadHistory()" id="loadHistory" class="btn btn-outline-primary">Load History</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full History Modal -->
+    <div class="modal fade" id="fullHistoryModal" tabindex="-1" aria-labelledby="fullHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="fullHistoryModalLabel">Full Analysis History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="fullHistoryContent">
+                    <!-- Full history will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Axios for API requests -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <script>
+    // Global variables
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioBlob;
+    let currentAudioFileName;
+
+    async function analyzeText() {
+        const text = document.getElementById('text-input').value;
+        if (!text) {
+            showResult('Please enter some text to analyze.', 'error');
+            return;
+        }
+        showResult('Analyzing text...', 'info');
+        try {
+            const response = await axios.post('/analyze-text', new URLSearchParams({text}));
+            showResult(formatAnalysisResult(response.data), 'success');
+        } catch (error) {
+            showResult(`Error: ${error.response?.data?.detail || error.message}`, 'error');
+        }
+    }
+
+    async function playText() {
+        const text = document.getElementById('text-input').value;
+        if (!text) {
+            showResult('Please enter some text to convert to speech.', 'error');
+            return;
+        }
+        showResult('Converting text to speech...', 'info');
+        try {
+            const response = await axios.post('/text-to-speech', new URLSearchParams({text}));
+            const audio = new Audio(`data:audio/mp3;base64,${response.data.audio}`);
+            audio.play();
+            showResult('Audio is playing...', 'success');
+        } catch (error) {
+            showResult(`Error: ${error.response?.data?.detail || error.message}`, 'error');
+        }
+    }
+
+    function startRecording() {
+        document.getElementById('text-input').value = '';
+        showResult('', '');
+
+        audioChunks = [];
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.start();
+
+                mediaRecorder.addEventListener("dataavailable", event => {
+                    audioChunks.push(event.data);
+                });
+
+                mediaRecorder.addEventListener("stop", () => {
+                    audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    transcribeAndAnalyzeAudio();
+                });
+
+                document.getElementById('startRecording').disabled = true;
+                document.getElementById('stopRecording').disabled = false;
+                document.getElementById('recordingStatus').style.display = 'inline';
+                showResult('Recording started...', 'info');
+            })
+            .catch(error => {
+                console.error('Error accessing microphone:', error);
+                showResult('Error accessing microphone. Please ensure you have given permission.', 'error');
+            });
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            mediaRecorder.stop();
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
+        document.getElementById('startRecording').disabled = false;
+        document.getElementById('stopRecording').disabled = true;
+        document.getElementById('recordingStatus').style.display = 'none';
+        showResult('Recording stopped. Transcribing and analyzing...', 'info');
+    }
+
+    async function transcribeAndAnalyzeAudio() {
+        if (!audioBlob || audioBlob.size === 0) {
+            showResult('No audio data captured. Please try recording again.', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", audioBlob, "recording.webm");
+
+        try {
+            const transcriptionResponse = await axios.post('/speech-to-text', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            currentAudioFileName = transcriptionResponse.data.audio_filename;
+
+            const sentimentResponse = await axios.post('/analyze-speech', {
+                transcript: transcriptionResponse.data.transcript,
+                audio_filename: currentAudioFileName
+            });
+
+            showResult(`
+                <h4>Transcription:</h4>
+                <p>${transcriptionResponse.data.transcript}</p>
+                <h4>Sentiment Analysis:</h4>
+                ${formatAnalysisResult(sentimentResponse.data)}
+            `, 'success');
+
+            document.getElementById('playRecording').disabled = false;
+        } catch (error) {
+            showResult(`Error: ${error.response?.data?.detail || error.message}`, 'error');
+        }
+    }
+
+    function playRecording() {
+        if (audioBlob) {
+            const audio = new Audio(URL.createObjectURL(audioBlob));
+            audio.play();
+            showResult('Playing recorded audio...', 'info');
+        } else {
+            showResult('No recording available to play.', 'error');
+        }
+    }
+
+async function loadHistory() {
+    showResult('Loading history...', 'info');
+    try {
+        const response = await axios.get('/get-history');
+        if (response.data.length === 0) {
+            showResult('No analysis history available.', 'info');
+        } else {
+            let historyHtml = '<h4>Recent Analyses:</h4>';
+            // Sort the history array by date (assuming there's a 'date' field)
+            const sortedHistory = response.data.sort((a, b) => new Date(b.date) - new Date(a.date));
+            sortedHistory.slice(0, 3).forEach((item, index) => {
+                historyHtml += formatHistoryItem(item, index);
+            });
+            historyHtml += '<button onclick="showFullHistory()" class="btn btn-sm btn-primary mt-2">Show Full History</button>';
+            showResult(historyHtml, 'success');
+        }
+    } catch (error) {
+        showResult(`Error loading history: ${error.response?.data?.detail || error.message}`, 'error');
+    }
+}
+
+async function showFullHistory() {
+    try {
+        const response = await axios.get('/get-history');
+        let fullHistoryHtml = '<h4>Full Analysis History:</h4>';
+        if (response.data.length === 0) {
+            fullHistoryHtml += '<p>No analysis history available.</p>';
+        } else {
+            // Sort the history array by date (assuming there's a 'date' field)
+            const sortedHistory = response.data.sort((a, b) => new Date(b.date) - new Date(a.date));
+            sortedHistory.forEach((item, index) => {
+                fullHistoryHtml += formatHistoryItem(item, index);
+            });
+        }
+        document.getElementById('fullHistoryContent').innerHTML = fullHistoryHtml;
+        new bootstrap.Modal(document.getElementById('fullHistoryModal')).show();
+    } catch (error) {
+        showResult(`Error loading full history: ${error.response?.data?.detail || error.message}`, 'error');
+    }
+}
+
+    async function playHistoryAudio(filename) {
+        try {
+            const response = await axios.get(`/get-audio/${filename}`, { responseType: 'blob' });
+            const audio = new Audio(URL.createObjectURL(response.data));
+            audio.play();
+            showResult('Playing history audio...', 'info');
+        } catch (error) {
+            showResult(`Error playing audio: ${error.response?.data?.detail || error.message}`, 'error');
+        }
+    }
+
+    function showResult(message, type) {
+        const resultDiv = document.getElementById('analysis-result');
+        resultDiv.innerHTML = message;
+        resultDiv.className = type ? `alert alert-${type}` : '';
+    }
+
+    function formatAnalysisResult(data) {
+        return `
+            <p><strong>ID:</strong> ${data.result_id}</p>
+            <p><strong>Sentiment:</strong> ${data.sentiment}</p>
+            <p><strong>Score:</strong> ${data.score.toFixed(2)}</p>
+            <p><strong>Magnitude:</strong> ${data.magnitude.toFixed(2)}</p>
+        `;
+    }
+
+function formatHistoryItem(item, index) {
+    return `
+        <div class="mb-2">
+            <h5>Analysis ${index + 1}</h5>
+            <p><strong>Date:</strong> ${new Date(item.date).toLocaleString()}</p>
+            <p><strong>Text:</strong> ${item.text.substring(0, 50)}...</p>
+            <p><strong>Sentiment:</strong> ${item.sentiment}</p>
+            <p><strong>Score:</strong> ${item.score.toFixed(2)}</p>
+            ${item.audio_filename ? `<button onclick="playHistoryAudio('${item.audio_filename}')" class="btn btn-sm btn-secondary">Play Audio</button>` : ''}
+        </div>
+    `;
+}
+
+    // Initialize the page
+    document.addEventListener('DOMContentLoaded', (event) => {
+        document.getElementById('startRecording').addEventListener('click', startRecording);
+        document.getElementById('stopRecording').addEventListener('click', stopRecording);
+        document.getElementById('playRecording').addEventListener('click', playRecording);
+        document.getElementById('loadHistory').addEventListener('click', loadHistory);
+
+        document.getElementById('stopRecording').disabled = true;
+        document.getElementById('playRecording').disabled = true;
+    });
+    </script>
+</body>
+</html>

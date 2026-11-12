@@ -1,0 +1,18 @@
+# Secrets — never commit cloud credentials
+*.json
+!package.json
+.env
+
+# Runtime data
+audio_files/
+sentiment_results/
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store

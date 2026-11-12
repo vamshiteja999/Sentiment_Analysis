@@ -9,15 +9,22 @@ import os
 import base64
 import uuid
 import json
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "expanded-symbol-436721-q7-1c5b7ff0d4be.json"
-RESULTS_DIR = "sentiment_results"
-AUDIO_DIR = "audio_files"
+# Google Cloud credentials are read from the GOOGLE_APPLICATION_CREDENTIALS
+# environment variable (see README). Never commit the key file itself.
+if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+    logger.warning(
+        "GOOGLE_APPLICATION_CREDENTIALS is not set; falling back to "
+        "Application Default Credentials (gcloud auth application-default login)."
+    )
+RESULTS_DIR = os.environ.get("RESULTS_DIR", "sentiment_results")
+AUDIO_DIR = os.environ.get("AUDIO_DIR", "audio_files")
 
 if not os.path.exists(RESULTS_DIR):
     os.makedirs(RESULTS_DIR)
@@ -66,8 +73,6 @@ def interpret_sentiment(score: float) -> str:
     else:
         return "Neutral"
 
-from datetime import datetime
-
 def save_result(text: str, sentiment: str, score: float, magnitude: float, audio_filename: str = None) -> str:
     result_id = str(uuid.uuid4())
     result = {
@@ -77,7 +82,7 @@ def save_result(text: str, sentiment: str, score: float, magnitude: float, audio
         "score": score,
         "magnitude": magnitude,
         "audio_filename": audio_filename,
-        "date": datetime.now().isoformat()  # Add this line
+        "date": datetime.now().isoformat()
     }
 
     filename = os.path.join(RESULTS_DIR, f"{result_id}.json")
@@ -85,6 +90,14 @@ def save_result(text: str, sentiment: str, score: float, magnitude: float, audio
         json.dump(result, f)
 
     return result_id
+
+def safe_path(directory: str, name: str) -> str:
+    """Resolve a user-supplied filename inside `directory`, rejecting path traversal."""
+    base = os.path.abspath(directory)
+    path = os.path.abspath(os.path.join(base, name))
+    if os.path.dirname(path) != base:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return path
 
 def text_to_speech(text: str) -> str:
     synthesis_input = texttospeech.SynthesisInput(text=text)
@@ -225,11 +238,12 @@ async def get_history():
         if filename.endswith(".json"):
             with open(os.path.join(RESULTS_DIR, filename), 'r') as f:
                 history.append(json.load(f))
+    history.sort(key=lambda r: r.get("date", ""), reverse=True)
     return history
 
 @app.get("/get-audio/{filename}")
 async def get_audio(filename: str):
-    file_path = os.path.join(AUDIO_DIR, filename)
+    file_path = safe_path(AUDIO_DIR, filename)
     if os.path.exists(file_path):
         return FileResponse(file_path, media_type="audio/webm")
     else:
@@ -238,9 +252,11 @@ async def get_audio(filename: str):
 @app.get("/get-result/{result_id}")
 async def get_result_endpoint(result_id: str):
     try:
-        with open(os.path.join(RESULTS_DIR, f"{result_id}.json"), 'r') as f:
+        with open(safe_path(RESULTS_DIR, f"{result_id}.json"), 'r') as f:
             result = json.load(f)
         return JSONResponse(content=result)
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Result not found")
     except Exception as e:
