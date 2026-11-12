@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+google-cloud-language>=2.13
+google-cloud-speech>=2.26
+google-cloud-texttospeech>=2.16
